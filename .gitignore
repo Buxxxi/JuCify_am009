@@ -6,3 +6,10 @@ tests
 apps/
 *__pycache__*
 *pyc
+/apkDir
+/benchApps
+/dataset
+/dataset_test
+/dataset_test2
+/datasets
+/nativediscloser_benchmark

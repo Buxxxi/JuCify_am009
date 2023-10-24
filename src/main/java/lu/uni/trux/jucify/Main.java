@@ -25,7 +25,7 @@ import soot.jimple.toolkits.callgraph.CallGraph;
 /*-
  * #%L
  * JuCify
- *
+ * 
  * %%
  * Copyright (C) 2021 Jordan Samhi
  * University of Luxembourg - Interdisciplinary Centre for
@@ -50,6 +50,7 @@ import soot.jimple.toolkits.callgraph.CallGraph;
 
 public class Main {
 	public static void main(String[] args) throws Throwable {
+		System.out.println("hello world");;
 		System.out.println(Arrays.toString(args));
 		StopWatch analysisTime = new StopWatch("Analysis");
 		analysisTime.start("Analysis");
@@ -62,6 +63,8 @@ public class Main {
 		String apk = options.getApk(),
 				platforms = options.getPlatforms();
 		List<Pair<String, String>> files = options.getFiles();
+
+		// 下面flowdroid api配置platforms路径和apk路径，用constructCallgraph()方法获取CG
 		InfoflowAndroidConfiguration ifac = new InfoflowAndroidConfiguration();
 		ifac.getAnalysisFileConfig().setAndroidPlatformDir(platforms);
 		ifac.getAnalysisFileConfig().setTargetAPKFile(apk);
@@ -91,6 +94,7 @@ public class Main {
 		ResultsAccumulator.v().setNumberEdgesBeforeJucify(Utils.getNumberOfEdgesInCG(cg));
 		ResultsAccumulator.v().setNumberNodesBeforeJucify(Utils.getNumberOfNodesInCG(cg));
 		
+		// 关键 将跨语言cg补全
 		CallGraphPatcher cgp = new CallGraphPatcher(cg, options.hasRaw());
 		cgp.importBinaryCallGraph(files);
 		if(!options.hasRaw()) {

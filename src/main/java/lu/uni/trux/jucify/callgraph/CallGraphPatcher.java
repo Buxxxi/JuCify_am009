@@ -79,7 +79,7 @@ public class CallGraphPatcher {
 
 		try {
 			for(Pair<String, String> pair: files) {
-				dotFile = pair.getValue0();
+				dotFile = pair.getValue0(); // 二进制内的cg
 				entrypoints = pair.getValue1();
 				dot = new FileInputStream(dotFile);
 				g = new Parser().read(dot);
@@ -102,25 +102,28 @@ public class CallGraphPatcher {
 						continue;
 					}
 					String[] split = line.split(",");
-					String clazz = split[0].trim();
-					String method = split[1].trim();
-					String sig = split[2].trim();
-					String target = split[3].trim();
-					Pair<String, String> pairNewSig = Utils.compactSigtoJimpleSig(sig);
-					String newSig = Utils.toJimpleSignature(clazz, pairNewSig.getValue1(), method, pairNewSig.getValue0());
+					String clazz = split[0].trim();	// lu.uni.trux.getter_imei.MainActivity
+					String method = split[1].trim();	//nativeGetImei
+					String sig = split[2].trim();	// (Landroid/telephony/TelephonyManager;)Ljava/lang/String;
+					String target = split[3].trim();	// Java_lu_uni_trux_getter_1imei_MainActivity_nativeGetImei
+					Pair<String, String> pairNewSig = Utils.compactSigtoJimpleSig(sig);	//{"(android.telephony.TelephonyManager)", "java.lang.String"}
+					String newSig = Utils.toJimpleSignature(clazz, pairNewSig.getValue1(), method, pairNewSig.getValue0()); // "<lu.uni.trux.getter_imei.MainActivity: java.lang.String nativeGetImei(android.telephony.TelephonyManager)>"
 					if(!Scene.v().containsMethod(newSig)) {
 						Utils.addPhantomMethod(newSig);
 					}
 					SootMethod nativeMethod = Scene.v().getMethod(newSig);
-					for(SootClass sc: Scene.v().getApplicationClasses()) {
-						for(SootMethod met: sc.getMethods()) {
-							if(met.isConcrete()) {
+					for(SootClass sc: Scene.v().getApplicationClasses()) { // 遍历soot类
+						for(SootMethod met: sc.getMethods()) {	// 遍历soot类中的方法
+							if(met.isConcrete()) { // 该方法是否有具体的实现
+								// 如果有具体实现的话，就看这个方法
 								for(Unit u: met.retrieveActiveBody().getUnits()) {
-									stmt = (Stmt) u;
-									if(stmt.containsInvokeExpr()) {
+									// .retrieveActiveBody()方法返回该方法的主体部分(Body)，主体部分包含实现该方法的具体的代码。
+									// .getUnits()方法将这个主体部分进一步细分为多个“单元”（Units），每个单元大致对应于一条或多条Java语言的指令。这些单元可以是各种类型的指令，比如分支指令，循环指令，变量赋值指令等。
+									stmt = (Stmt) u;  // stmt代表一条jimple语句
+									if(stmt.containsInvokeExpr()) { // 检查stmt是否包含方法调用表达式的函数
 										ie = stmt.getInvokeExpr();
-										if(ie.getMethod().equals(nativeMethod)) {
-											javaToNative.add(new Pair<String, SootMethod>(target, nativeMethod));
+										if(ie.getMethod().equals(nativeMethod)) {	// 该stmt调用了nativeMethod
+											javaToNative.add(new Pair<String, SootMethod>(target, nativeMethod));	// String是native function名，nativeMethod是SootMethod的实例，是那个native method
 										}
 									}
 								}
@@ -129,15 +132,15 @@ public class CallGraphPatcher {
 					}
 					// HANDLE NATIVE TO JAVA CALLS	
 					if(split.length == 10) {
-						String invokeeClass = split[5].trim();
-						String invokeeMethod = split[6].trim();
-						String invokeeSig = split[7].trim();
-						pairNewSig = Utils.compactSigtoJimpleSig(invokeeSig);
-						newSig = Utils.toJimpleSignature(invokeeClass, pairNewSig.getValue1(), invokeeMethod, pairNewSig.getValue0());
+						String invokeeClass = split[5].trim(); // android.telephony.TelephonyManager
+						String invokeeMethod = split[6].trim(); // getDeviceId
+						String invokeeSig = split[7].trim(); // ()Ljava/lang/String;
+						pairNewSig = Utils.compactSigtoJimpleSig(invokeeSig); // //{"()", "java.lang.String"}
+						newSig = Utils.toJimpleSignature(invokeeClass, pairNewSig.getValue1(), invokeeMethod, pairNewSig.getValue0()); // "<android.telephony.TelephonyManager: java.lang.String getDeviceId()>"
 						if(!Scene.v().containsMethod(newSig)) {
 							Utils.addPhantomMethod(newSig);
 						}
-						sm = Scene.v().getMethod(newSig);
+						sm = Scene.v().getMethod(newSig); // 根据这个java method的sig，获取相应SootMethod
 						javaTargets = nativeToJava.get(target);
 						if(javaTargets == null) {
 							javaTargets = new ArrayList<SootMethod>();
@@ -148,21 +151,21 @@ public class CallGraphPatcher {
 				}
 				is.close();
 
-				CustomPrints.perror("Java2Native: "+String.valueOf(javaToNative.size()));
-				CustomPrints.perror("Native2Java: "+String.valueOf(nativeToJava.size()));
-				// GENERATE BINARY NODES THAT ARE JAVA NATIVE CALLS AND INSTRUMENT THE BODY
+				CustomPrints.perror("Java2Native: "+String.valueOf(javaToNative.size())); // javaToNative是个Pair，fist是native function字符串，second是相应的native method（sootMethod格式）
+				CustomPrints.perror("Native2Java: "+String.valueOf(nativeToJava.size())); // nativeToJava的键是native function字符串，值是arraylist每个元素是该native function中调用的java method（sootMethod格式）
+				// GENERATE BINARY NODES THAT ARE JAVA NATIVE CALLS AND INSTRUMENT THE BODY 把二进制函数转为jimple
 				for(Pair<String, SootMethod> p: javaToNative) {
 					name = p.getValue0();
 					m = p.getValue1();
 					if(!nodesToMethods.containsKey(name)) {
-						sm = DummyBinaryClass.v().addBinaryMethod(name,
-								m.getReturnType(), m.getModifiers(),
-								m.getParameterTypes());
-						nodesToMethods.put(name, sm);
+ 						sm = DummyBinaryClass.v().addBinaryMethod(name,
+								m.getReturnType(), m.getModifiers(),	// rettype是java.lang.String modifiers是257表示修饰符（public 的常量值为 1，private 的常量值为 2，protected 的常量值为 4， static 的常量值为 8）
+								m.getParameterTypes());	// parametertypes是ArrayList["android.telephony.TelephonyManager"]
+						nodesToMethods.put(name, sm); // nodesToMethods是个map，键是native function（后面也放了其他二进制函数），值是这个为native function构建的Jimple格式SootMethod
 						for(SootClass sc: Scene.v().getApplicationClasses()) {
-							for(SootMethod met: sc.getMethods()) {
-								if(met.hasActiveBody()) {
-									Body b = met.retrieveActiveBody();
+							for(SootMethod met: sc.getMethods()) { // 仍旧是遍历每个java method
+								if(met.hasActiveBody()) { // 这个方法的是实现已经加载到Soot
+									Body b = met.retrieveActiveBody(); // 获取该方法的活动体，通常表示为Jimple形式的语句。
 									UnitPatchingChain units = b.getUnits();
 									List<Unit> newUnits = null;
 									Stmt point = null;
@@ -170,7 +173,7 @@ public class CallGraphPatcher {
 										stmt = (Stmt) u;
 										if(stmt.containsInvokeExpr()) {
 											ie = stmt.getInvokeExpr();
-											if(ie.getMethod().equals(m)) {
+											if(ie.getMethod().equals(m)) { // 找到所有调用了Native Method的java method(met) onCreate
 												Pair<Local, Pair<List<Unit>, Stmt>> locNewUnits = DummyBinaryClass.v().checkDummyBinaryClassLocalExistence(b, stmt);
 												Local dummyBinaryClassLocal = locNewUnits.getValue0();
 												Pair<List<Unit>, Stmt> newUnitsPoint = locNewUnits.getValue1();
@@ -204,7 +207,7 @@ public class CallGraphPatcher {
 												this.cg.addEdge(new Edge(met, stmt, sm));
 												this.newReachableNodes.add(sm);
 												ResultsAccumulator.v().incrementNumberNewJavaToNativeCallGraphEdges();
-												if(!raw) {
+												if(!raw) {	// met是调用native method的java method（onCreate）,sm是被调用的native function(<DummyBinaryClass: java.lang.String Java_lu_uni_trux_getter_1imei_MainActivity_nativeGetImei(android.telephony.TelephonyManager)>)
 													CustomPrints.pinfo(String.format("Adding java-to-native Edge from %s to %s", met, sm));
 												}
 											}
@@ -291,7 +294,7 @@ public class CallGraphPatcher {
 										this.cg.addEdge(e);
 										this.newReachableNodes.add(met);
 										ResultsAccumulator.v().incrementNumberNewNativeToJavaCallGraphEdges();
-										if(!raw) {
+										if(!raw) { // sm是<DummyBinaryClass: java.lang.String Java_lu_uni_trux_getter_1imei_MainActivity_nativeGetImei(android.telephony.TelephonyManager)>， met是<android.telephony.TelephonyManager: java.lang.String getDeviceId()>
 											CustomPrints.pinfo(String.format("Adding native-to-java Edge from %s to %s", sm, met));
 										}
 									}
@@ -309,15 +312,19 @@ public class CallGraphPatcher {
 						}
 					}
 				}
-
-				// GENERATE BINARY NODES INTO SOOT CALL GRAPH
-				for(MutableNode node: g.nodes()) {
+				// 上面为止完成了native function的SootMethod的创建和并入（连接调用native method的java method到这个模拟的sootmethod的边，连接在native function里调用的java method）
+				// GENERATE BINARY NODES INTO SOOT CALL GRAPH 这里生成所有二进制cg（.so.callgraph文件）的二进制函数的sootmethod
+				for(MutableNode node: g.nodes()) {	// 遍历二进制cg（.so.callgraph文件）的节点
 					name = Utils.removeNodePrefix(node.name().toString());
 					if(!nodesToMethods.containsKey(name)) {
 						sm = DummyBinaryClass.v().addBinaryMethod(name, VoidType.v(), Modifier.PUBLIC, new ArrayList<>());
-						nodesToMethods.put(name, sm);
+						nodesToMethods.put(name, sm); // 为每个被调用到的二进制函数创建一个空的SootMethod
 					}
+					System.out.println("hello!!");
+					System.out.println(nodesToMethods.get(name).getSignature());
 				}
+
+
 
 				// ADD EDGE FROM INITIAL BINARY CALL-GRAPH
 				for(Link l: g.edges()) {

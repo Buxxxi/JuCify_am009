@@ -2,7 +2,7 @@
 
 $* &
 pid=$!
-((lim = 5400))
+((lim = 3000))
 while [[ $lim -gt 0 ]] ; do
     sleep 1
     proc=$(ps -ef | awk -v pid=$pid '$2==pid{print}{}')
@@ -13,5 +13,5 @@ while [[ $lim -gt 0 ]] ; do
 done
 if [[ $lim -gt -9 ]] ; then
     pkill -P $pid
-    kill -9 -$pid
+    kill -9 $pid
 fi
